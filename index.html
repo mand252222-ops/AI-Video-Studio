@@ -1,0 +1,230 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI Video Studio</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#101014;color:#fff;font-family:Arial}
+header{padding:22px;text-align:center;background:#17171d;border-bottom:1px solid #b79545}
+h1{color:#d9b65b;margin:5px}
+p{color:#bbb}
+main{padding:18px;max-width:650px;margin:auto}
+.panel{background:#1c1c24;padding:16px;border-radius:14px;margin:15px 0}
+label{display:block;margin:12px 0 7px;color:#d9b65b}
+input,textarea,select,button{
+width:100%;padding:13px;border-radius:9px;
+border:1px solid #555;background:#292933;color:white;
+font-size:15px
+}
+textarea{height:110px}
+button{background:#b79545;color:#111;font-weight:bold;border:0;margin-top:12px}
+button:disabled{opacity:.5}
+canvas{width:100%;background:#000;border-radius:12px}
+#status{color:#d9b65b}
+</style>
+</head>
+<body>
+<header>
+<h1>AI VIDEO STUDIO</h1>
+<p>Create videos from your photos and text</p>
+</header>
+
+<main>
+<div class="panel">
+<h3>01 — Upload Character</h3>
+<label>Select your image</label>
+<input type="file" id="photo" accept="image/*">
+</div>
+
+<div class="panel">
+<h3>02 — Your Script</h3>
+<label>Write what the character will say</label>
+<textarea id="script" placeholder="Hello! Welcome to my video..."></textarea>
+
+<label>Voice language</label>
+<select id="language">
+<option value="en-US">English</option>
+<option value="ar-SA">Arabic</option>
+<option value="fr-FR">French</option>
+</select>
+
+<button onclick="speak()">Preview Voice</button>
+</div>
+
+<div class="panel">
+<h3>03 — Video Settings</h3>
+<label>Video duration (seconds)</label>
+<input id="duration" type="number" value="10" min="3" max="60">
+
+<label>Animation style</label>
+<select id="style">
+<option value="zoom">Cinematic Zoom</option>
+<option value="move">Camera Movement</option>
+<option value="static">Natural Presentation</option>
+</select>
+</div>
+
+<div class="panel">
+<h3>04 — Video Preview</h3>
+<canvas id="screen" width="720" height="1280"></canvas>
+<p id="status">Upload an image to begin.</p>
+<button id="create" onclick="createVideo()">Create Video</button>
+<button id="stop" onclick="stopVideo()" disabled>Stop</button>
+</div>
+</main>
+
+<script>
+const photo=document.getElementById('photo');
+const canvas=document.getElementById('screen');
+const ctx=canvas.getContext('2d');
+const status=document.getElementById('status');
+
+let img=null;
+let recorder=null;
+let frames=[];
+let animation=null;
+let recording=false;
+let start=0;
+
+photo.onchange=()=>{
+ const file=photo.files[0];
+ if(!file)return;
+ img=new Image();
+ img.onload=()=>{
+  draw(0);
+  status.textContent='Image loaded successfully!';
+ };
+ img.src=URL.createObjectURL(file);
+};
+
+function draw(t){
+ ctx.fillStyle='#101014';
+ ctx.fillRect(0,0,720,1280);
+
+ if(img){
+  let scale=Math.max(720/img.width,1280/img.height);
+  let w=img.width*scale;
+  let h=img.height*scale;
+  let zoom=1;
+  let mode=document.getElementById('style').value;
+
+  if(mode==='zoom')zoom=1+t*.12;
+  if(mode==='move')zoom=1.08;
+
+  w*=zoom;
+  h*=zoom;
+
+  let x=(720-w)/2;
+  let y=(1280-h)/2;
+
+  if(mode==='move'){
+   x+=Math.sin(t*1.2)*18;
+   y+=Math.cos(t*.8)*18;
+  }
+
+  ctx.drawImage(img,x,y,w,h);
+ }
+
+ let text=document.getElementById('script').value;
+ if(text){
+  ctx.fillStyle='rgba(0,0,0,.65)';
+  ctx.fillRect(25,1050,670,170);
+  ctx.fillStyle='#e5c16b';
+  ctx.font='bold 30px Arial';
+  ctx.textAlign='center';
+  ctx.fillText(text.substring(0,45),360,1120);
+  ctx.fillStyle='white';
+  ctx.font='22px Arial';
+  ctx.fillText('AI VIDEO STUDIO',360,1170);
+ }
+}
+
+function speak(){
+ let text=document.getElementById('script').value;
+ if(!text){alert('Write your script first');return;}
+
+ speechSynthesis.cancel();
+ let voice=new SpeechSynthesisUtterance(text);
+ voice.lang=document.getElementById('language').value;
+ voice.rate=0.95;
+ speechSynthesis.speak(voice);
+}
+
+function createVideo(){
+ if(!img){alert('Upload an image first');return;}
+
+ if(!canvas.captureStream||!window.MediaRecorder){
+  alert('Please use Chrome browser');
+  return;
+ }
+
+ let duration=Math.max(3,Math.min(60,
+ Number(document.getElementById('duration').value)||10));
+
+ frames=[];
+ start=performance.now();
+ recording=true;
+
+ const stream=canvas.captureStream(25);
+ let mime=MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+ ?'video/webm;codecs=vp9':'video/webm';
+
+ recorder=new MediaRecorder(stream,{mimeType:mime});
+
+ recorder.ondataavailable=e=>{
+  if(e.data.size>0)frames.push(e.data);
+ };
+
+ recorder.onstop=()=>{
+  const blob=new Blob(frames,{type:'video/webm'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download='AI-Video-Studio.webm';
+  a.click();
+  status.textContent='Video exported successfully!';
+  recording=false;
+ };
+
+ recorder.start();
+ document.getElementById('create').disabled=true;
+ document.getElementById('stop').disabled=false;
+
+ function animate(now){
+  if(!recording)return;
+
+  let elapsed=(now-start)/1000;
+  draw(elapsed);
+
+  status.textContent='Creating video: '+Math.min(100,
+  Math.round(elapsed/duration*100))+'%';
+
+  if(elapsed>=duration){
+   stopVideo();
+   return;
+  }
+
+  animation=requestAnimationFrame(animate);
+ }
+
+ animation=requestAnimationFrame(animate);
+}
+
+function stopVideo(){
+ if(!recording)return;
+ recording=false;
+ cancelAnimationFrame(animation);
+
+ if(recorder&&recorder.state!=='inactive'){
+  recorder.stop();
+ }
+
+ document.getElementById('create').disabled=false;
+ document.getElementById('stop').disabled=true;
+}
+</script>
+</body>
+</html>
